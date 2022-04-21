@@ -13,4 +13,7 @@ class NameLocations(dict): #TODO: make into collections.OrderedDict
     def find_first_empty_loc(self): # when OrderedDict we can make this a binary search
         for i in range(self.MAX_SIZE):
             if i not in self.values():
-                return i            
+                return i
+        #TODO: catch the IndexError and move things to memory.
+        raise IndexError(f"{self.name} is full.")
+    
