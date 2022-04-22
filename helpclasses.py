@@ -3,10 +3,11 @@ class NameLocations(dict): #TODO: make into collections.OrderedDict
     def __init__(self, max_size, name):
         super().__init__(self)
         self.MAX_SIZE = max_size
-        self.name = name
+        self.name = name # name for this block of memory, e.g. registers
 
     def __setitem__(self, key, value):
-        if key not in self and  len(self)+ 1 > self.MAX_SIZE:
+        "Set dictionary item. key is variable name; value is position in memory."
+        if key not in self and len(self)+ 1 > self.MAX_SIZE:
             raise KeyError(f"{name} is full. Please delete keys.")
         super().__setitem__(key, value)
 

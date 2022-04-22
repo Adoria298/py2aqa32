@@ -25,6 +25,7 @@ class Compiler:
                 
     def compile_ast(self, ast_): #TODO: strings, BIDM-AS-, for-loops (convert to while then compile?)
         for stmt in ast_.body:
+            pprint(self.REGISTERS)
             if isinstance(stmt, ast.Assign): # <x> = <y>, <z>
                 self.compile_Assign(stmt)
             elif isinstance (stmt, ast.AugAssign): # <x> <op>= <y> -> <x> = <x> <op> <y>
@@ -51,24 +52,25 @@ class Compiler:
 
     def compile_BinOp(self, stmt, dest):
         left_reg = self.get_register(stmt.left)
-        right_reg = self.get_register(stmt.right)
+        if isinstance(stmt.right, ast.Constant):
+            if not isinstance(stmt.right.value, int):
+                raise TypeError("py2aqa32 only supports integer constants.")
+            right = "#" + str(stmt.right.value)
+        else:
+            right = "R" + str(self.get_register(stmt.right))
         dest_reg = self.set_register(dest)            
         ops = {ast.Add: "ADD", ast.Sub: "SUB"}
         if isinstance(stmt.op, ast.Add):
             self.compiled += "ADD "
         elif isinstance(stmt.op, ast.Sub):
             self.compiled += "SUB "
-        self.compiled += f"R{dest_reg}, R{left_reg}, R{right_reg}\n"
+        self.compiled += f"R{dest_reg}, R{left_reg}, {right}\n"
 
     def get_register(self, var):
         if isinstance(var, ast.Name):
             r = self.get_register_from_name(var.id)
         elif isinstance(var, ast.Constant): # perhaps look for constants already stored?
-            if not isinstance(var.value, int): 
-                raise TypeError("py2aqa32 only supports integer constants.")
-            r = self.set_register("temp" + str(self.temp_reg_counter))
-            self.temp_reg_counter += 1
-            self.compiled += f"MOV R{r}, #{var.value}\n"
+            raise ValueError("Constant has no register.")
         return r
     
     def get_register_from_name(self, name):
@@ -84,6 +86,8 @@ class Compiler:
             raise NameError(f"name '{name}' is not defined.")
 
     def set_register(self, name):
+        if name in self.REGISTERS:
+            self.get_register_from_name(name)
         reg = self.REGISTERS.find_first_empty_loc()
         self.REGISTERS[name] = reg
         return reg 
