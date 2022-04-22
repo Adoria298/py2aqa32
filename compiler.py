@@ -25,7 +25,9 @@ class Compiler:
                 
     def compile_ast(self, ast_): #TODO: strings, BIDM-AS-, for-loops (convert to while then compile?)
         for stmt in ast_.body:
-            pprint(self.REGISTERS)
+            if DEBUG:
+                print(ast.dump(stmt))
+            #pprint(self.REGISTERS) #TODO: R1 is not 
             if isinstance(stmt, ast.Assign): # <x> = <y>, <z>
                 self.compile_Assign(stmt)
             elif isinstance (stmt, ast.AugAssign): # <x> <op>= <y> -> <x> = <x> <op> <y>
@@ -36,15 +38,16 @@ class Compiler:
                                              right = stmt.value
                                              )
                                          )
-                self.compile_Assign(temp_assign)                                       
+                self.compile_Assign(temp_assign)
+            pprint(self.REGISTERS) 
         self.compiled += "\nHALT"
 
     def compile_Assign(self, assign):
         for t in assign.targets:
-            reg = self.set_register(t.id) 
             if isinstance(assign.value, ast.BinOp):
                 self.compile_BinOp(assign.value, t.id)
             else:
+                reg = self.set_register(t.id) 
                 self.compiled += f"MOV R{reg}, "
                 if isinstance(assign.value, ast.Num):
                     self.compiled += "#" + str(assign.value.n)
@@ -58,8 +61,9 @@ class Compiler:
             right = "#" + str(stmt.right.value)
         else:
             right = "R" + str(self.get_register(stmt.right))
+        pprint(self.REGISTERS)
         dest_reg = self.set_register(dest)            
-        ops = {ast.Add: "ADD", ast.Sub: "SUB"}
+        #ops = {ast.Add: "ADD", ast.Sub: "SUB"}
         if isinstance(stmt.op, ast.Add):
             self.compiled += "ADD "
         elif isinstance(stmt.op, ast.Sub):
@@ -78,21 +82,22 @@ class Compiler:
             return self.REGISTERS[name]
         elif name in self.MEM_LOCATIONS:
             memloc = self.MEM_LOCATIONS[name]
-            r = self.REGISTERS.find_first_empty_loc()
-            self.REGISTERS[name] = r
+            r = self.set_register(name)
             self.compiled += f"LDR R{r}, {memloc}\n"
             return r
         else:
             raise NameError(f"name '{name}' is not defined.")
 
     def set_register(self, name):
-        if name in self.REGISTERS:
-            self.get_register_from_name(name)
+        #if DEBUG:
+         #   pprint((name, self.REGISTERS))
+        if name in self.REGISTERS.keys():
+            return self.get_register_from_name(name)
+        if DEBUG:
+            pprint((name, self.REGISTERS))
         reg = self.REGISTERS.find_first_empty_loc()
         self.REGISTERS[name] = reg
         return reg 
-
-
 
 if __name__ == "__main__":
     c = Compiler()
