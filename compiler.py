@@ -10,9 +10,13 @@ class Compiler:
 
     def __init__(self):
         self.TEST_FILE = Path("./test_code.py")
+
         self.REGISTERS = NameLocations(max_size=12, name="REGISTERS")
         self.MEM_LOCATIONS = NameLocations(max_size=975, name="MAIN MEMORY")# 975 = 5*195
+
         self.temp_reg_counter = 0
+        self.loop_counter = {"while": 0, "for": 0,"mul": 0, "div": 0} # some for later
+
         asty = self.get_ast()
         if DEBUG:
             pprint(ast.dump(asty))
@@ -39,6 +43,8 @@ class Compiler:
                                              )
                                          )
                 self.compile_Assign(temp_assign)
+            elif isinstance(stmt, ast.While): # while <test>: <body>
+                self.compile_While(stmt)
             pprint(self.REGISTERS) 
         self.compiled += "\nHALT"
 
@@ -69,6 +75,18 @@ class Compiler:
         elif isinstance(stmt.op, ast.Sub):
             self.compiled += "SUB "
         self.compiled += f"R{dest_reg}, R{left_reg}, {right}\n"
+
+    def compile_While(self, stmt):
+        if isinstance(stmt.test, ast.Constant):
+            if not stmt.test.value:
+                return None # if the constant is falsey the while-loop will never run.
+            label = "while" + str(self.loop_counter["while"])
+            self.loop_counter["while"] += 1
+            self.compiled += "\n" + label + ": "
+            self.compile_ast(stmt) # shouldn't recurse as there this method will look at the while loop's body
+            self.compiled += f"\nB label\n"
+        else:
+            raise NotImplementedError("Conditional iteration.")
 
     def get_register(self, var):
         if isinstance(var, ast.Name):
