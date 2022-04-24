@@ -21,7 +21,8 @@ class Compiler:
         if DEBUG:
             pprint(ast.dump(asty))
         self.compiled = ""
-        self.compile_ast(asty)        
+        self.compile_ast(asty)
+        self.compiled += "\nHALT"        
         
     def get_ast(self):
         with open(self.TEST_FILE, mode="r", encoding="utf8") as tf:
@@ -46,7 +47,6 @@ class Compiler:
             elif isinstance(stmt, ast.While): # while <test>: <body>
                 self.compile_While(stmt)
             pprint(self.REGISTERS) 
-        self.compiled += "\nHALT"
 
     def compile_Assign(self, assign):
         for t in assign.targets:
