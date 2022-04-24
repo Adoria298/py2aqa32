@@ -82,9 +82,9 @@ class Compiler:
                 return None # if the constant is falsey the while-loop will never run.
             label = "while" + str(self.loop_counter["while"])
             self.loop_counter["while"] += 1
-            self.compiled += "\n" + label + ": "
+            self.compiled += "\n" + label + ": " # \n just in case
             self.compile_ast(stmt) # shouldn't recurse as there this method will look at the while loop's body
-            self.compiled += f"\nB label\n"
+            self.compiled += f"B label\n"
         else:
             raise NotImplementedError("Conditional iteration.")
 
