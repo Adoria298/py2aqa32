@@ -2,6 +2,8 @@
 import ast
 from pathlib import Path
 from pprint import pprint
+import operator as ops
+
 from helpclasses import NameLocations
 
 global DEBUG
@@ -81,13 +83,32 @@ class Compiler:
         if isinstance(stmt.test, ast.Constant):
             if not stmt.test.value:
                 return None # if the constant is falsey the while-loop will never run.
-            label = "while" + str(self.loop_counter["while"])
-            self.loop_counter["while"] += 1
+            label = self.get_label("while")
             self.compiled += "\n" + label + ": " # \n just in case
             self.compile_ast(stmt) # shouldn't recurse as there this method will look at the while loop's body
             self.compiled += f"B {label}\n"
+            return None
         else:
-            raise NotImplementedError("Conditional iteration.")
+            return self.compile_While_conditional(stmt)
+                        
+    def compile_While_conditional(self, stmt):          
+        test = stmt.test
+        if isinstance(test, ast.Compare): # can this be assumed?
+            if len(test.ops) > 1 or len(test.comparators) > 1:
+                raise NotImplementedError("Multiple comparisons.")
+            if isinstance(test.left, ast.Constant) and isinstance(test.right, ast.Constant): # optimise out Const == Const
+                comps = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.Ne: ops.ne, ast.Ge: ops.ge, ast.Le: ops.le}
+                op = ops[0]
+                comp = comps[type(op)]
+                if comp(test.left.value, test.right.value):
+                    new_while = ast.While(test=Constant(value=True), body=stmt.body, orelse=stmt.orelse)
+                    return self.compile_While(new_while)
+            
+                    
+    def get_label(self, keyword):
+        label = keyword + str(self.loop_counter[keyword])
+        self.loop_counter[keyword] += 1
+        return label
 
     def get_register(self, var):
         if isinstance(var, ast.Name):

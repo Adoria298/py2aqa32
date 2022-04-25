@@ -17,4 +17,3 @@ class NameLocations(dict): #TODO: make into collections.OrderedDict
                 return i
         #TODO: catch the IndexError and move things to memory.
         raise IndexError(f"{self.name} is full.")
-    
