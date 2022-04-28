@@ -1,4 +1,3 @@
-
 import ast
 from pathlib import Path
 from pprint import pprint
@@ -14,11 +13,13 @@ class Compiler:
     def __init__(self):
         self.TEST_FILE = Path("./test_code.py")
 
+        #TODO: memory management for when we run out of registers
         self.REGISTERS = NameLocations(max_size=12, name="REGISTERS")
         self.MEM_LOCATIONS = NameLocations(max_size=975, name="MAIN MEMORY")# 975 = 5*195
 
         self.temp_reg_counter = 0
         self.loop_counter = {"while": 0, "for": 0,"mul": 0, "div": 0} # some for later
+        self.COMP_OPS = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.Ne: ops.ne, ast.Ge: ops.ge, ast.Le: ops.le}
 
         asty = self.get_ast()
         if DEBUG:
@@ -96,14 +97,29 @@ class Compiler:
         if isinstance(test, ast.Compare): # can this be assumed?
             if len(test.ops) > 1 or len(test.comparators) > 1:
                 raise NotImplementedError("Multiple comparisons.")
-            if isinstance(test.left, ast.Constant) and isinstance(test.right, ast.Constant): # optimise out Const == Const
-                comps = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.Ne: ops.ne, ast.Ge: ops.ge, ast.Le: ops.le}
-                op = ops[0]
-                comp = comps[type(op)]
-                if comp(test.left.value, test.right.value):
+            left = test.left
+            right = test.comparators[0]
+            op = test.ops[0]
+            if isinstance(left, ast.Constant) and isinstance(right, ast.Constant): # optimise out Const == Const
+                comp = self.COMP_OPS[type(op)]
+                if comp(left.value, right.value):
                     new_while = ast.While(test=Constant(value=True), body=stmt.body, orelse=stmt.orelse)
                     return self.compile_While(new_while)
-            
+            # Otherwise, if left is Constant, right is Name,
+            # but if right is Constant, left is Name,
+            # but if neither are Constant, both are Name.
+            elif isinstance(left, ast.Constant): # e.g. Const == <x>
+                pass
+            elif isinstance(right, ast.Constant): # e.g. <x> == <y>
+                pass
+            else: # e.g. <x> == <y>
+                pass
+
+    def give_constant_register(self, value):
+        name = "const" + str(self.temp_reg_counter)
+        self.temp_reg_counter += 1
+        r = self.set_register(name)
+        return name, r
                     
     def get_label(self, keyword):
         label = keyword + str(self.loop_counter[keyword])
