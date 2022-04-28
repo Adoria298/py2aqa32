@@ -56,7 +56,7 @@ class Compiler:
                 self.compile_While(stmt)
             pprint(self.REGISTERS) 
 
-    def compile_Assign(self, assign):
+    def compile_Assign(self, assign: ast.Assign):
         for t in assign.targets:
             if isinstance(assign.value, ast.BinOp):
                 self.compile_BinOp(assign.value, t.id)
@@ -67,7 +67,7 @@ class Compiler:
                     self.compiled += "#" + str(assign.value.n)
                 self.compiled += "\n"
 
-    def compile_BinOp(self, stmt, dest):
+    def compile_BinOp(self, stmt: ast.BinOp, dest: str):
         left_reg = self.get_register(stmt.left)
         if isinstance(stmt.right, ast.Constant):
             if not isinstance(stmt.right.value, int):
@@ -84,7 +84,7 @@ class Compiler:
             self.compiled += "SUB "
         self.compiled += f"R{dest_reg}, R{left_reg}, {right}\n"
 
-    def compile_While(self, stmt):
+    def compile_While(self, stmt: ast.While):
         if isinstance(stmt.test, ast.Constant):
             if not stmt.test.value:
                 return None # if the constant is falsey the while-loop will never run.
@@ -117,7 +117,7 @@ class Compiler:
                 right_r = self.get_register(right)
                 self.compile_condition(left_r, right_r, op, label)
 
-    def compile_condition(self, left_reg, right_reg, op, true_label): # may need revising for elif/else etc
+    def compile_condition(self, left_reg: int, right_reg: int, op, true_label: str): # may need revising for elif/else etc
         #NB: order of left_reg and right_reg is same in Python and real life.
         self.compiled += f"CMP R{left_reg}, R{right_reg}\n"
         if isinstance(op, ast.Eq):
@@ -138,12 +138,12 @@ class Compiler:
             raise NotImplementedError(f"This comparison operator: \n{op}.")
         self.compiled += "\n" # forgot to put it at the top
 
-    def get_label(self, keyword):
+    def get_label(self, keyword: str):
         label = keyword + str(self.loop_counter[keyword])
         self.loop_counter[keyword] += 1
         return label
 
-    def get_register(self, var):
+    def get_register(self, var: ast.Name or ast.Const):
         if isinstance(var, ast.Name):
             r = self.get_register_from_name(var.id)
         elif isinstance(var, ast.Constant): # perhaps look for constants already stored?
@@ -151,7 +151,7 @@ class Compiler:
             r = self.give_constant_register(var.value)[1]
         return r
     
-    def get_register_from_name(self, name):
+    def get_register_from_name(self, name: str):
         if name in self.REGISTERS:
             return self.REGISTERS[name]
         elif name in self.MEM_LOCATIONS:
@@ -162,7 +162,7 @@ class Compiler:
         else:
             raise NameError(f"name '{name}' is not defined.")
 
-    def give_constant_register(self, value):
+    def give_constant_register(self, value: int):
         if not isinstance(value, int):
             raise TypeError("py2aqa32 only supports integer constants.") 
         name = "const" + str(self.temp_reg_counter)
@@ -171,7 +171,7 @@ class Compiler:
         self.compiled += f"MOV R{r}, #{value}\n"
         return name, r
 
-    def set_register(self, name):
+    def set_register(self, name: str):
         #if DEBUG:
          #   pprint((name, self.REGISTERS))
         if name in self.REGISTERS.keys():
