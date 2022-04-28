@@ -19,7 +19,7 @@ class Compiler:
 
         self.temp_reg_counter = 0
         self.loop_counter = {"while": 0, "for": 0,"mul": 0, "div": 0} # some for later
-        self.COMP_OPS = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.Ne: ops.ne, ast.Ge: ops.ge, ast.Le: ops.le}
+        self.COMP_OPS = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.NotEq: ops.ne, ast.GtE: ops.ge, ast.LtE: ops.le}
 
         asty = self.get_ast()
         if DEBUG:
@@ -33,7 +33,11 @@ class Compiler:
             return ast.parse(tf.read(), self.TEST_FILE, "exec")
                 
     def compile_ast(self, ast_): #TODO: strings, BIDM-AS-, for-loops (convert to while then compile?)
-        for stmt in ast_.body:
+        if hasattr(ast_, "body"):
+            body = ast_.body
+        else:
+            body = ast_
+        for stmt in body:
             if DEBUG:
                 print(ast.dump(stmt))
             #pprint(self.REGISTERS) #TODO: R1 is not 
@@ -92,7 +96,7 @@ class Compiler:
         else:
             return self.compile_While_conditional(stmt)
                         
-    def compile_While_conditional(self, stmt):          
+    def compile_While_conditional(self, stmt: ast.While):          
         test = stmt.test
         if isinstance(test, ast.Compare): # can this be assumed?
             if len(test.ops) > 1 or len(test.comparators) > 1:
@@ -103,24 +107,37 @@ class Compiler:
             if isinstance(left, ast.Constant) and isinstance(right, ast.Constant): # optimise out Const == Const
                 comp = self.COMP_OPS[type(op)]
                 if comp(left.value, right.value):
-                    new_while = ast.While(test=Constant(value=True), body=stmt.body, orelse=stmt.orelse)
+                    new_while = ast.While(test=ast.Constant(value=True), body=stmt.body, orelse=stmt.orelse)
                     return self.compile_While(new_while)
-            # Otherwise, if left is Constant, right is Name,
-            # but if right is Constant, left is Name,
-            # but if neither are Constant, both are Name.
-            elif isinstance(left, ast.Constant): # e.g. Const == <x>
-                pass
-            elif isinstance(right, ast.Constant): # e.g. <x> == <y>
-                pass
-            else: # e.g. <x> == <y>
-                pass
+            else:
+                label = self.get_label("while")
+                self.compiled += label + ":\n"
+                self.compile_ast(stmt.body)
+                left_r = self.get_register(left)
+                right_r = self.get_register(right)
+                self.compile_condition(left_r, right_r, op, label)
 
-    def give_constant_register(self, value):
-        name = "const" + str(self.temp_reg_counter)
-        self.temp_reg_counter += 1
-        r = self.set_register(name)
-        return name, r
-                    
+    def compile_condition(self, left_reg, right_reg, op, true_label): # may need revising for elif/else etc
+        #NB: order of left_reg and right_reg is same in Python and real life.
+        self.compiled += f"CMP R{left_reg}, R{right_reg}\n"
+        if isinstance(op, ast.Eq):
+            self.compiled += f"BEQ {true_label}"
+        elif isinstance(op, ast.NotEq):
+            self.compiled += f"BNE {true_label}"
+        elif isinstance(op, ast.Lt):
+            self.compiled += f"BLT {true_label}"
+        elif isinstance(op, ast.LtE):
+            self.compiled += f"BLT {true_label}"
+            self.compiled += f"BEQ {true_label}"
+        elif isinstance(op, ast.Gt):
+            self.compiled += f"BGT {true_label}"
+        elif isinstance(op, ast.GtE):
+            self.compiled += f"BGT {true_label}"
+            self.compiled += f"BEQ {true_label}"
+        else:
+            raise NotImplementedError(f"This comparison operator: \n{op}.")
+        self.compiled += "\n" # forgot to put it at the top
+
     def get_label(self, keyword):
         label = keyword + str(self.loop_counter[keyword])
         self.loop_counter[keyword] += 1
@@ -130,7 +147,8 @@ class Compiler:
         if isinstance(var, ast.Name):
             r = self.get_register_from_name(var.id)
         elif isinstance(var, ast.Constant): # perhaps look for constants already stored?
-            raise ValueError("Constant has no register.")
+            # originally this raised a ValueError for reasons forgotten - may have been laziness
+            r = self.give_constant_register(var.value)[1]
         return r
     
     def get_register_from_name(self, name):
@@ -143,6 +161,15 @@ class Compiler:
             return r
         else:
             raise NameError(f"name '{name}' is not defined.")
+
+    def give_constant_register(self, value):
+        if not isinstance(value, int):
+            raise TypeError("py2aqa32 only supports integer constants.") 
+        name = "const" + str(self.temp_reg_counter)
+        self.temp_reg_counter += 1
+        r = self.set_register(name)
+        self.compiled += f"MOV R{r}, #{value}\n"
+        return name, r
 
     def set_register(self, name):
         #if DEBUG:

@@ -8,7 +8,7 @@ class NameLocations(dict): #TODO: make into collections.OrderedDict
     def __setitem__(self, key, value):
         "Set dictionary item. key is variable name; value is position in memory."
         if key not in self and len(self)+ 1 > self.MAX_SIZE:
-            raise KeyError(f"{name} is full. Please delete keys.")
+            raise KeyError(f"{self.name} is full. Please delete keys.")
         super().__setitem__(key, value)
 
     def find_first_empty_loc(self): # when OrderedDict we can make this a binary search
@@ -17,3 +17,4 @@ class NameLocations(dict): #TODO: make into collections.OrderedDict
                 return i
         #TODO: catch the IndexError and move things to memory.
         raise IndexError(f"{self.name} is full.")
+        
