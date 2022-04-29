@@ -13,9 +13,9 @@
 
 At present rates,programs will quickly run out of space in the registers.
 We need to:
-    1. delete unreferenced and out-of-scope variables: garbage collection
-    2. transfer variables currently in scope but otherwise unused to the end of main memory when a register fills
-    	a. the simplest way to do this would be to transfer R0 first (though if you did that twice in quick succession you'd have to transfer it back)
+1. delete unreferenced and out-of-scope variables: garbage collection
+2. transfer variables currently in scope but otherwise unused to the end of main memory when a register fills
+    1. the simplest way to do this would be to transfer R0 first (though if you did that twice in quick succession you'd have to transfer it back)
 
 The python programmer does not need to worry about addressing modes or an object's location in memory.
 
