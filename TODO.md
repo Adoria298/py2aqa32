@@ -3,8 +3,8 @@
 - [ ] Memory Management - Scope
 - [ ] If/elif/else
 - [ ] Bitwise logic
-- [ ] For loops
 - [ ] Extensions: print, input, video_memory
+- [ ] For loops
 - [ ] Functions
 - [ ] Strings
 - [ ] Multiplication & Division
@@ -35,6 +35,13 @@ When a function is called we should check if it is `print`, `input`, or `cell_ou
 `cell_out` is a special builtin function that takes a cell and a colour and writes to video memory.
 If it is one of these three it needs special assembly.
 Other functions should be called like normal.
+
+# For loops
+
+For loops will require the implementation of lists (=tuples).
+A `for i in range` style loop could be a special case that's written before lists are implemented, with `range()` resolving to a counter.
+In any case, a for loop will resolve to a while loop with a counter and some instantiation before.
+It will be similar to the implementation of strings.
 
 # Strings 
 
