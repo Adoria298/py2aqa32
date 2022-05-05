@@ -98,6 +98,8 @@ class Compiler:
         A constant can also be the "test" of a while loop: the same principle applies.
         If the constant is truey an unconditional branch is used.
         This does not affect variables defined in the loop as they should be destroyed by scope anyway.
+
+        compile_While produces a "while" label for each while loop.
         """
         label = self.get_label("while")
         test = self._compile_test_to_str(stmt.test, label)
@@ -113,15 +115,27 @@ class Compiler:
 
         Like in self.compile_While, if a test is patently false that entire block is removed from the code.
         Unconditional branches are used for patently/constantly true tests, e.g. `if True:`.
+
+        Note that ast records elif as another instance of ast.If but stored in the `orelse` block not the `body` block.
+        This method must therefore be recursive.
+
+        compile_If uses the `if` and `endif`, and often `elif` (not recursive?) and `else` too.
+        `endif` is used in an else-free statement to skip past the if-block.
+        `endif` is used in an else-full statement at the end of each if/elif-block to skip past the over blocks.
+        `endif` refers to the statement after the entire if statement (i.e. all of if/elif/else).
         """
-        label = self.get_label("if")
-        test = self._compile_test_to_str(stmt.test, label)
+        if_label = self.get_label("if")
+        endif_label = self.get_label("endif")
+        test = self._compile_test_to_str(stmt.test, if_label)
         if test is None:
             return None
         self.compiled += test
+        if len(stmt.orelse) == 0: # perhaps this should be a flag?
+            self.compiled += f"B {endif_label}\n" # in case there is no else
         # insert elif/else etc here.
-        self.compiled += label + ":\n"
+        self.compiled += if_label + ":\n"
         self.compile_ast(stmt.body)
+        self.compiled += endif_label + ":\n" # must be the final statement
 
     def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str or None:
         "Compiles a test as used by If and While. Returns the assembly code to be used by If or While."
