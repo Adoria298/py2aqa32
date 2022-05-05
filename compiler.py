@@ -18,7 +18,7 @@ class Compiler:
         self.MEM_LOCATIONS = NameLocations(max_size=975, name="MAIN MEMORY")# 975 = 5*195
 
         self.temp_reg_counter = 0
-        self.loop_counter = {"while": 0, "for": 0,"mul": 0, "div": 0} # some for later
+        self.loop_counter = {"while": 0, "for": 0, "if": 0, "mul": 0, "div": 0} # some for later
         self.COMP_OPS = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.NotEq: ops.ne, ast.GtE: ops.ge, ast.LtE: ops.le}
 
         asty = self.get_ast()
@@ -44,16 +44,11 @@ class Compiler:
             if isinstance(stmt, ast.Assign): # <x> = <y>, <z>
                 self.compile_Assign(stmt)
             elif isinstance (stmt, ast.AugAssign): # <x> <op>= <y> -> <x> = <x> <op> <y>
-                temp_assign = ast.Assign(targets = [stmt.target],
-                                         value = ast.BinOp(
-                                             left = stmt.target,
-                                             op = stmt.op,
-                                             right = stmt.value
-                                             )
-                                         )
-                self.compile_Assign(temp_assign)
+                self.compile_AugAssign(stmt)
             elif isinstance(stmt, ast.While): # while <test>: <body>
                 self.compile_While(stmt)
+            elif isinstance(stmt, ast.If):
+                self.compile_If(stmt)
             pprint(self.REGISTERS) 
 
     def compile_Assign(self, assign: ast.Assign):
@@ -66,6 +61,16 @@ class Compiler:
                 if isinstance(assign.value, ast.Num):
                     self.compiled += "#" + str(assign.value.n)
                 self.compiled += "\n"
+
+    def compile_AugAssign(self, assign: ast.AugAssign):
+        temp_assign = ast.Assign(targets = [assign.target],
+                                 value = ast.BinOp(
+                                     left = assign.target,
+                                     op = assign.op,
+                                     right = assign.value
+                                     )
+                                 )
+        self.compile_Assign(temp_assign)
 
     def compile_BinOp(self, stmt: ast.BinOp, dest: str):
         left_reg = self.get_register(stmt.left)
@@ -85,58 +90,61 @@ class Compiler:
         self.compiled += f"R{dest_reg}, R{left_reg}, {right}\n"
 
     def compile_While(self, stmt: ast.While):
-        if isinstance(stmt.test, ast.Constant):
-            if not stmt.test.value:
+        label = self.get_label("while")
+        test = self._compile_test_to_str(stmt.test, label)
+        if test: # could return None
+            return None # no need to compile a null-condition
+        self.compiled += label + ":\n"
+        self.compile_ast(stmt.body) 
+        
+
+    def compile_If(self, stmt: ast.If):
+        label = self.get_label("if")
+        # compile conditional
+        # then compile blocks
+
+    def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str:
+        "Compiles a test as used by If and While. Returns the assembly code to be used by If or While."
+        if isinstance(test, ast.Constant):
+            if not test.value:
                 return None # if the constant is falsey the while-loop will never run.
-            label = self.get_label("while")
-            self.compiled += "\n" + label + ": " # \n just in case
-            self.compile_ast(stmt) # shouldn't recurse as there this method will look at the while loop's body
-            self.compiled += f"B {label}\n"
-            return None
+            return f"B {label}\n"
         else:
-            return self.compile_While_conditional(stmt)
-                        
-    def compile_While_conditional(self, stmt: ast.While):          
-        test = stmt.test
-        if isinstance(test, ast.Compare): # can this be assumed?
             if len(test.ops) > 1 or len(test.comparators) > 1:
-                raise NotImplementedError("Multiple comparisons.")
+                raise NotImplementedError("Multiple comparisons.") 
             left = test.left
             right = test.comparators[0]
             op = test.ops[0]
             if isinstance(left, ast.Constant) and isinstance(right, ast.Constant): # optimise out Const == Const
                 comp = self.COMP_OPS[type(op)]
                 if comp(left.value, right.value):
-                    new_while = ast.While(test=ast.Constant(value=True), body=stmt.body, orelse=stmt.orelse)
-                    return self.compile_While(new_while)
+                    return self._compile_test_to_str(test=ast.Constant(value=True), label=label)
             else:
-                label = self.get_label("while")
-                self.compiled += label + ":\n"
-                self.compile_ast(stmt.body)
                 left_r = self.get_register(left)
                 right_r = self.get_register(right)
-                self.compile_condition(left_r, right_r, op, label)
+                return self._compile_condition_to_str(left_r, right_r, op, label)
 
-    def compile_condition(self, left_reg: int, right_reg: int, op, true_label: str): # may need revising for elif/else etc
+    def _compile_condition_to_str(self, left_reg: int, right_reg: int, op, true_label: str) -> str: # may need revising for elif/else etc
         #NB: order of left_reg and right_reg is same in Python and real life.
-        self.compiled += f"CMP R{left_reg}, R{right_reg}\n"
+        compiled += f"CMP R{left_reg}, R{right_reg}\n"
         if isinstance(op, ast.Eq):
-            self.compiled += f"BEQ {true_label}"
+            compiled += f"BEQ {true_label}"
         elif isinstance(op, ast.NotEq):
-            self.compiled += f"BNE {true_label}"
+            compiled += f"BNE {true_label}"
         elif isinstance(op, ast.Lt):
-            self.compiled += f"BLT {true_label}"
+            compiled += f"BLT {true_label}"
         elif isinstance(op, ast.LtE):
-            self.compiled += f"BLT {true_label}"
-            self.compiled += f"BEQ {true_label}"
+            compiled += f"BLT {true_label}"
+            compiled += f"BEQ {true_label}"
         elif isinstance(op, ast.Gt):
-            self.compiled += f"BGT {true_label}"
+            compiled += f"BGT {true_label}"
         elif isinstance(op, ast.GtE):
-            self.compiled += f"BGT {true_label}"
-            self.compiled += f"BEQ {true_label}"
+            compiled += f"BGT {true_label}"
+            compiled += f"BEQ {true_label}"
         else:
             raise NotImplementedError(f"This comparison operator: \n{op}.")
-        self.compiled += "\n" # forgot to put it at the top
+        compiled += "\n"
+        return compiled
 
     def get_label(self, keyword: str):
         label = keyword + str(self.loop_counter[keyword])

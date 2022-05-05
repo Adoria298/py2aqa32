@@ -1,3 +1,4 @@
+
 class NameLocations(dict): #TODO: make into collections.OrderedDict
     "Stores a Python Name's memory location in this block of memory."
     def __init__(self, max_size: int, name: str):
