@@ -7,7 +7,7 @@ while a > 0:
 
 if a == 0:
     a = 10
-#elif b != 11:
-#    b = 11
-#else:
-#    print(d)
+elif b != 11:
+    b = 11
+else:
+    print(d)

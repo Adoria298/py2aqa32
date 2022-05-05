@@ -18,7 +18,7 @@ class Compiler:
         self.MEM_LOCATIONS = NameLocations(max_size=975, name="MAIN MEMORY")# 975 = 5*195
 
         self.temp_reg_counter = 0
-        self.loop_counter = {"while": 0, "for": 0, "if": 0, "mul": 0, "div": 0} # some for later
+        self.branch_counter = {x: 0 for x in "while, for, if, elif, else, endif, mul, div".split(", ")} # some for later
         self.COMP_OPS = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.NotEq: ops.ne, ast.GtE: ops.ge, ast.LtE: ops.le}
 
         asty = self.get_ast()
@@ -167,8 +167,8 @@ class Compiler:
         return compiled
 
     def get_label(self, keyword: str):
-        label = keyword + str(self.loop_counter[keyword])
-        self.loop_counter[keyword] += 1
+        label = keyword + str(self.branch_counter[keyword])
+        self.branch_counter[keyword] += 1
         return label
 
     def get_register(self, var: ast.Name or ast.Const):
