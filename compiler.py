@@ -89,21 +89,41 @@ class Compiler:
             self.compiled += "SUB "
         self.compiled += f"R{dest_reg}, R{left_reg}, {right}\n"
 
-    def compile_While(self, stmt: ast.While):
+    def compile_While(self, stmt: ast.While) -> None:
+        """
+        A While loop is a block of code and a branch to the start - effectively a do-while loop.
+        
+        A comparision may be done between two constants.
+        In that case, the compile tests them before compilation and and does not include the while loop if the comparision is patently false.
+        A constant can also be the "test" of a while loop: the same principle applies.
+        If the constant is truey an unconditional branch is used.
+        This does not affect variables defined in the loop as they should be destroyed by scope anyway.
+        """
         label = self.get_label("while")
         test = self._compile_test_to_str(stmt.test, label)
-        if test: # could return None
+        if test is None: # could return None with a Const == Const where the statement is patently false
             return None # no need to compile a null-condition
         self.compiled += label + ":\n"
         self.compile_ast(stmt.body) 
-        
+        self.compiled += test       
 
-    def compile_If(self, stmt: ast.If):
+    def compile_If(self, stmt: ast.If) -> None: #TODO: elif, else
+        """
+        An If statement is a non-recursive series of branches each leading to a block of code.
+
+        Like in self.compile_While, if a test is patently false that entire block is removed from the code.
+        Unconditional branches are used for patently/constantly true tests, e.g. `if True:`.
+        """
         label = self.get_label("if")
-        # compile conditional
-        # then compile blocks
+        test = self._compile_test_to_str(stmt.test, label)
+        if test is None:
+            return None
+        self.compiled += test
+        # insert elif/else etc here.
+        self.compiled += label + ":\n"
+        self.compile_ast(stmt.body)
 
-    def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str:
+    def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str or None:
         "Compiles a test as used by If and While. Returns the assembly code to be used by If or While."
         if isinstance(test, ast.Constant):
             if not test.value:
@@ -126,7 +146,7 @@ class Compiler:
 
     def _compile_condition_to_str(self, left_reg: int, right_reg: int, op, true_label: str) -> str: # may need revising for elif/else etc
         #NB: order of left_reg and right_reg is same in Python and real life.
-        compiled += f"CMP R{left_reg}, R{right_reg}\n"
+        compiled = f"CMP R{left_reg}, R{right_reg}\n"
         if isinstance(op, ast.Eq):
             compiled += f"BEQ {true_label}"
         elif isinstance(op, ast.NotEq):
