@@ -105,7 +105,7 @@ class Compiler:
         """
         A While loop is a block of code and three branches.
 
-        Two branches are needed to prevent the loop becoming a do-while loop:
+        Three branches are needed to prevent the loop becoming a do-while loop:
             - one at the start which branches to while loop's body (label: 'whilebody') if its test is passed.
             - one after that but before 'whilebody' which branches to the label 'endwhile'.
                 - this is run if the while loop has finished.
