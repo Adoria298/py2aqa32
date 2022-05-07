@@ -18,7 +18,7 @@ class Compiler:
         self.MEM_LOCATIONS = NameLocations(max_size=975, name="MAIN MEMORY")# 975 = 5*195
 
         self.temp_reg_counter = 0
-        self.branch_counter = {x: 0 for x in "while, for, if, elif, else, endif, mul, div".split(", ")} # some for later
+        self.branch_counter = {x: 0 for x in "whiletest, whilebody, endwhile, for, if, elif, else, endif, mul, div".split(", ")} # some for later
         self.COMP_OPS = {ast.Gt: ops.gt, ast.Lt: ops.lt, ast.Eq: ops.eq, ast.NotEq: ops.ne, ast.GtE: ops.ge, ast.LtE: ops.le}
 
         asty = self.get_ast()
@@ -91,7 +91,13 @@ class Compiler:
 
     def compile_While(self, stmt: ast.While) -> None:
         """
-        A While loop is a block of code and a branch to the start - effectively a do-while loop.
+        A While loop is a block of code and three branches.
+
+        Two branches are needed to prevent the loop becoming a do-while loop:
+            - one at the start which branches to while loop's body (label: 'whilebody') if its test is passed.
+            - one after that but before 'whilebody' which branches to the label 'endwhile'.
+                - this is run if the while loop has finished.
+            - one at the end which returns to the first branch (label: 'whiletest').
         
         A comparision may be done between two constants.
         In that case, the compile tests them before compilation and and does not include the while loop if the comparision is patently false.
@@ -99,15 +105,19 @@ class Compiler:
         If the constant is truey an unconditional branch is used.
         This does not affect variables defined in the loop as they should be destroyed by scope anyway.
 
-        compile_While produces a "while" label for each while loop.
-        """
-        label = self.get_label("while")
-        test = self._compile_test_to_str(stmt.test, label)
+        'endwhile' is guarenteed to come after the entire while loop and is a return to the main code.      
+        """ #TODO: implement memory management and call it at endwhile.
+        test_label, body_label, end_label = self.get_label("whiletest"), self.get_label("whilebody"), self.get_label("endwhile")
+        test = self._compile_test_to_str(stmt.test, body_label)
         if test is None: # could return None with a Const == Const where the statement is patently false
             return None # no need to compile a null-condition
-        self.compiled += label + ":\n"
+        self._compile_label(test_label)
+        self.compiled += test # must include a branch
+        self.compiled += f"B {end_label}\n" # if the test was false we must skip to the end.
+        self._compile_label(body_label)
         self.compile_ast(stmt.body) 
-        self.compiled += test       
+        self.compiled += f"B {test_label}\n"
+        self._compile_label(end_label) # must be the final statement
 
     def compile_If(self, stmt: ast.If) -> None: #TODO: elif, else
         """
@@ -133,12 +143,15 @@ class Compiler:
         if len(stmt.orelse) == 0: # perhaps this should be a flag?
             self.compiled += f"B {endif_label}\n" # in case there is no else
         # insert elif/else etc here.
-        self.compiled += if_label + ":\n"
+        self._compile_label(if_label)
         self.compile_ast(stmt.body)
-        self.compiled += endif_label + ":\n" # must be the final statement
+        self._compile_label(endif_label) # must be the final statement
 
     def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str or None:
-        "Compiles a test as used by If and While. Returns the assembly code to be used by If or While."
+        """
+        Compiles a test as used by If and While. Returns the assembly code to be used by If or While.
+        This assembly code always includes a branch to `label`.
+        """
         if isinstance(test, ast.Constant):
             if not test.value:
                 return None # if the constant is falsey the while-loop will never run.
@@ -180,6 +193,9 @@ class Compiler:
         compiled += "\n"
         return compiled
 
+    def _compile_label(self, label: str) -> None: # in case it changes
+        self.compiled += label + ":\n"
+
     def get_label(self, keyword: str):
         label = keyword + str(self.branch_counter[keyword])
         self.branch_counter[keyword] += 1
@@ -204,6 +220,9 @@ class Compiler:
         else:
             raise NameError(f"name '{name}' is not defined.")
 
+    #TODO: investigate whether this causes an issue with while-loop scope.
+    # currently this is added to self.compiled before the whiletest label
+    # - which is more optimal but could mean it's overwritten
     def give_constant_register(self, value: int):
         if not isinstance(value, int):
             raise TypeError("py2aqa32 only supports integer constants.") 
