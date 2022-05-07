@@ -9,7 +9,11 @@ global DEBUG
 DEBUG = True
 
 class Compiler:
-
+    """
+    Class to compile Python code into AQA Assembly (see README.md).
+    Compiled code is stored in self.compiled.
+    Currently compiles code in ./test_code.py and the compiled code is available upon instantiation.
+    """#TODO: allow caller to change the source code that is compiled - perhaps use __call__ to return self.compiled or write it out?
     def __init__(self):
         self.TEST_FILE = Path("./test_code.py")
 
@@ -28,11 +32,13 @@ class Compiler:
         self.compile_ast(asty)
         self.compiled += "\nHALT"        
         
-    def get_ast(self):
+    def get_ast(self) -> ast.Module:
+        "Returns an Abstract Syntax Tree of the Python code in self.TEST_FILE."
         with open(self.TEST_FILE, mode="r", encoding="utf8") as tf:
             return ast.parse(tf.read(), self.TEST_FILE, "exec")
                 
-    def compile_ast(self, ast_): #TODO: strings, BIDM-AS-, for-loops (convert to while then compile?)
+    def compile_ast(self, ast_: ast.Module or list) -> None: #TODO: strings, BIDM-AS-, for-loops (convert to while then compile?)
+        "Compiles an Abstract Syntax Tree, or a list of its nodes into AQA Assembly."
         if hasattr(ast_, "body"):
             body = ast_.body
         else:
@@ -51,7 +57,8 @@ class Compiler:
                 self.compile_If(stmt)
             pprint(self.REGISTERS) 
 
-    def compile_Assign(self, assign: ast.Assign):
+    def compile_Assign(self, assign: ast.Assign) -> None:
+        "Compiles statements of the type `spam = ham`."
         for t in assign.targets:
             if isinstance(assign.value, ast.BinOp):
                 self.compile_BinOp(assign.value, t.id)
@@ -62,7 +69,8 @@ class Compiler:
                     self.compiled += "#" + str(assign.value.n)
                 self.compiled += "\n"
 
-    def compile_AugAssign(self, assign: ast.AugAssign):
+    def compile_AugAssign(self, assign: ast.AugAssign) -> None:
+        "Compiles statements of the type `spam += ham`."
         temp_assign = ast.Assign(targets = [assign.target],
                                  value = ast.BinOp(
                                      left = assign.target,
@@ -72,7 +80,11 @@ class Compiler:
                                  )
         self.compile_Assign(temp_assign)
 
-    def compile_BinOp(self, stmt: ast.BinOp, dest: str):
+    def compile_BinOp(self, stmt: ast.BinOp, dest: str) -> None:
+        """
+        Compiles statements of the type `spam + ham` and places them into `dest`.
+        TODO: multiplication and division.
+        """
         left_reg = self.get_register(stmt.left)
         if isinstance(stmt.right, ast.Constant):
             if not isinstance(stmt.right.value, int):
@@ -172,6 +184,7 @@ class Compiler:
                 return self._compile_condition_to_str(left_r, right_r, op, label)
 
     def _compile_condition_to_str(self, left_reg: int, right_reg: int, op, true_label: str) -> str: # may need revising for elif/else etc
+        "Compiles statements into a CMP followed by one or more conditional branches, depending on `op`."
         #NB: order of left_reg and right_reg is same in Python and real life.
         compiled = f"CMP R{left_reg}, R{right_reg}\n"
         if isinstance(op, ast.Eq):
@@ -194,14 +207,23 @@ class Compiler:
         return compiled
 
     def _compile_label(self, label: str) -> None: # in case it changes
+        "Adds a label + a colon + a new line into the assembly."
         self.compiled += label + ":\n"
 
-    def get_label(self, keyword: str):
+    def get_label(self, keyword: str) -> str:
+        """
+        Returns the next label for this keywords.
+        Labels start at 0 - the counter is `self.branch_counter`.
+        """
         label = keyword + str(self.branch_counter[keyword])
         self.branch_counter[keyword] += 1
         return label
 
-    def get_register(self, var: ast.Name or ast.Const):
+    def get_register(self, var: ast.Name or ast.Constant) -> int:
+        """
+        Returns the register that `var` is registered to. 
+        If `var` is a constant the constant is assigned a register and that is returned.
+        """
         if isinstance(var, ast.Name):
             r = self.get_register_from_name(var.id)
         elif isinstance(var, ast.Constant): # perhaps look for constants already stored?
@@ -209,7 +231,11 @@ class Compiler:
             r = self.give_constant_register(var.value)[1]
         return r
     
-    def get_register_from_name(self, name: str):
+    def get_register_from_name(self, name: str) -> int:
+        """
+        Returns the register that a variable name is registered to.
+        If the variable is in memory, but not in the registers, then a `LDR` call is added to `self.compiled`.
+        """
         if name in self.REGISTERS:
             return self.REGISTERS[name]
         elif name in self.MEM_LOCATIONS:
@@ -223,7 +249,9 @@ class Compiler:
     #TODO: investigate whether this causes an issue with while-loop scope.
     # currently this is added to self.compiled before the whiletest label
     # - which is more optimal but could mean it's overwritten
-    def give_constant_register(self, value: int):
+    #TODO: call constants `constx` where x is their value and look them up before assigning a new register.
+    def give_constant_register(self, value: int) -> str and int:
+        "Assigns a register to a constant and returns the temporary name and the register."
         if not isinstance(value, int):
             raise TypeError("py2aqa32 only supports integer constants.") 
         name = "const" + str(self.temp_reg_counter)
@@ -232,7 +260,8 @@ class Compiler:
         self.compiled += f"MOV R{r}, #{value}\n"
         return name, r
 
-    def set_register(self, name: str):
+    def set_register(self, name: str) -> int:
+        "Assigns a register to a variable name and returns that register."
         #if DEBUG:
          #   pprint((name, self.REGISTERS))
         if name in self.REGISTERS.keys():

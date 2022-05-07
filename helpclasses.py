@@ -12,7 +12,9 @@ class NameLocations(dict): #TODO: make into collections.OrderedDict
             raise KeyError(f"{self.name} is full. Please delete keys.")
         super().__setitem__(key, value)
 
+    #TODO: should this be reversed/take into account program size when in main memory?
     def find_first_empty_loc(self): # when OrderedDict we can make this a binary search
+        "Returns the position of the first empty location in this memory area e.g. first empty register."
         for i in range(self.MAX_SIZE):
             if i not in self.values():
                 return i
