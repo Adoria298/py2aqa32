@@ -131,7 +131,7 @@ class Compiler:
         self.compiled += f"B {test_label}\n"
         self._compile_label(end_label) # must be the final statement
 
-    def compile_If(self, stmt: ast.If) -> None: #TODO: elif, else
+    def compile_If(self, stmt: ast.If, endif_label: str = None) -> None: #TODO: elif, else
         """
         An If statement is a non-recursive series of branches each leading to a block of code.
 
@@ -141,23 +141,39 @@ class Compiler:
         Note that ast records elif as another instance of ast.If but stored in the `orelse` block not the `body` block.
         This method must therefore be recursive.
 
-        compile_If uses the `if` and `endif`, and often `elif` (not recursive?) and `else` too.
+        compile_If uses the `if` and `endif` labels, and often `elif` (not recursive?) and `else` too.
         `endif` is used in an else-free statement to skip past the if-block.
-        `endif` is used in an else-full statement at the end of each if/elif-block to skip past the over blocks.
+        `endif` is used in an else-full statement at the end of each if/elif-block to skip past the other blocks.
         `endif` refers to the statement after the entire if statement (i.e. all of if/elif/else).
         """
-        if_label = self.get_label("if")
-        endif_label = self.get_label("endif")
+        if endif_label is None:
+            if_label = self.get_label("if")
+            endif_label = self.get_label("endif")
+        else:
+            if_label = self.get_label("elif") # not strictly needed
+            #endif_label = endif_label
         test = self._compile_test_to_str(stmt.test, if_label)
         if test is None:
             return None
         self.compiled += test
+        # plain if-statement
         if len(stmt.orelse) == 0: # perhaps this should be a flag?
             self.compiled += f"B {endif_label}\n" # in case there is no else
         # insert elif/else etc here.
+        # accounting for elif-statement
+        elif isinstance(stmt.orelse[0], ast.If): 
+            self.compile_If(stmt.orelse[0], endif_label)
+        else: 
+            # else_label is not necessary because of the order it is written - else is default.
+##           else_label = self.get_label("else")
+##           self.compiled += f"B {else_label}\n"
+##           self.compile_label(else_label)
+            self.compile_ast(stmt.orelse)
+            self.compiled += f"B {endif_label}\n"
         self._compile_label(if_label)
         self.compile_ast(stmt.body)
-        self._compile_label(endif_label) # must be the final statement
+        if not "elif" in if_label:
+            self._compile_label(endif_label) # must be the final statement of the original if one
 
     def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str or None:
         """

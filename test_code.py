@@ -7,7 +7,13 @@ while a > 0:
 
 if a == 0:
     a = 10
+
+if a < 0:
+    a = 20
 elif b != 11:
     b = 11
+
+if c == d:
+    print(c)
 else:
     print(d)
