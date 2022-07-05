@@ -270,6 +270,9 @@ class Compiler:
             pprint((name, self.REGISTERS))
         reg = self.REGISTERS.find_first_empty_loc()
         self.REGISTERS[name] = reg
+        if DEBUG:
+            # Comment to help the reader/tester understand the output.
+            self.compiled += f"\n//{name} = R{reg}\n"
         return reg 
 
 if __name__ == "__main__":
