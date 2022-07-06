@@ -172,7 +172,9 @@ class Compiler:
             self.compiled += f"B {endif_label}\n"
         self._compile_label(if_label)
         self.compile_ast(stmt.body)
-        if not "elif" in if_label:
+        if "elif" in if_label:
+            self.compiled += f"B {endif_label}\n"
+        else:
             self._compile_label(endif_label) # must be the final statement of the original if one
 
     def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str or None:
