@@ -131,7 +131,7 @@ class Compiler:
         self.compiled += f"B {test_label}\n"
         self._compile_label(end_label) # must be the final statement
 
-    def compile_If(self, stmt: ast.If, endif_label: str = None) -> None: #TODO: elif, else
+    def compile_If(self, stmt: ast.If, endif_label: str = None) -> None: 
         """
         An If statement is a non-recursive series of branches each leading to a block of code.
 

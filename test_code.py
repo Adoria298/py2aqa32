@@ -20,4 +20,4 @@ if c == d:
 else:
     d -= 1
 
-print(a,b,c,d)
+#print(a,b,c,d)
