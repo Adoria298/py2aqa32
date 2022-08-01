@@ -20,6 +20,7 @@ class Compiler:
         #TODO: memory management for when we run out of registers
         self.REGISTERS = NameLocations(max_size=12, name="REGISTERS")
         self.MEM_LOCATIONS = NameLocations(max_size=975, name="MAIN MEMORY")# 975 = 5*195
+        self.globals = set() # used to manage scope
 
         self.temp_reg_counter = 0
         self.branch_counter = {x: 0 for x in "whiletest, whilebody, endwhile, for, if, elif, else, endif, mul, div".split(", ")} # some for later
@@ -29,7 +30,7 @@ class Compiler:
         if DEBUG:
             pprint(ast.dump(asty))
         self.compiled = ""
-        self.compile_ast(asty)
+        self.compile_ast(asty, scope=self.globals)
         self.compiled += "\nHALT"        
         
     def get_ast(self) -> ast.Module:
@@ -37,8 +38,15 @@ class Compiler:
         with open(self.TEST_FILE, mode="r", encoding="utf8") as tf:
             return ast.parse(tf.read(), self.TEST_FILE, "exec")
                 
-    def compile_ast(self, ast_: ast.Module or list) -> None: #TODO: strings, BIDM-AS-, for-loops (convert to while then compile?)
-        "Compiles an Abstract Syntax Tree, or a list of its nodes into AQA Assembly."
+    def compile_ast(self, ast_: ast.Module or list, scope: set) -> None: #TODO: strings, BIDM-AS-, for-loops (convert to while then compile?)
+        """
+        Compiles an Abstract Syntax Tree, or a list of its nodes, into AQA Assembly.
+
+        Params:
+            - ast_: Abstract Syntax Tree/list of subtrees
+            - scope: set of variables in scope. By default should be the empty set.
+        """
+        #TODO: I don't like this passing scope around: it should be a class variable.
         if hasattr(ast_, "body"):
             body = ast_.body
         else:
@@ -48,22 +56,29 @@ class Compiler:
                 print(ast.dump(stmt))
             #pprint(self.REGISTERS) #TODO: R1 is not 
             if isinstance(stmt, ast.Assign): # <x> = <y>, <z>
-                self.compile_Assign(stmt)
+                self.compile_Assign(stmt, scope)
             elif isinstance (stmt, ast.AugAssign): # <x> <op>= <y> -> <x> = <x> <op> <y>
-                self.compile_AugAssign(stmt)
+                self.compile_AugAssign(stmt, scope)
             elif isinstance(stmt, ast.While): # while <test>: <body>
                 self.compile_While(stmt)
             elif isinstance(stmt, ast.If):
                 self.compile_If(stmt)
             pprint(self.REGISTERS) 
+    
+    def compile_ast_with_locals(self, local_stmt: ast.Module or list) -> None:
+        "self.compile_ast with builtin space freeing - method to avoid repetition."
+        old_globals = self.globals[::] # must be a copy as sets are mutable
+        self.compile_ast(local_stmt, scope=self.globals)
+        locals = old_globals & self.globals # locals is any variable added in this block
+        self.free_memory(locals)
 
-    def compile_Assign(self, assign: ast.Assign) -> None:
+    def compile_Assign(self, assign: ast.Assign, scope: set) -> None:
         "Compiles statements of the type `spam = ham`."
         for t in assign.targets:
             if isinstance(assign.value, ast.BinOp):
-                self.compile_BinOp(assign.value, t.id)
+                self.compile_BinOp(assign.value, t.id, scope)
             else:
-                reg = self.set_register(t.id) 
+                reg = self.set_register(t.id, scope) 
                 self.compiled += f"MOV R{reg}, "
                 if isinstance(assign.value, ast.Num):
                     self.compiled += "#" + str(assign.value.n)
@@ -80,20 +95,20 @@ class Compiler:
                                  )
         self.compile_Assign(temp_assign)
 
-    def compile_BinOp(self, stmt: ast.BinOp, dest: str) -> None:
+    def compile_BinOp(self, stmt: ast.BinOp, dest: str, scope: set) -> None:
         """
         Compiles statements of the type `spam + ham` and places them into `dest`.
         TODO: multiplication and division.
         """
-        left_reg = self.get_register(stmt.left)
+        left_reg = self.get_register(stmt.left, scope)
         if isinstance(stmt.right, ast.Constant):
             if not isinstance(stmt.right.value, int):
                 raise TypeError("py2aqa32 only supports integer constants.")
             right = "#" + str(stmt.right.value)
         else:
-            right = "R" + str(self.get_register(stmt.right))
+            right = "R" + str(self.get_register(stmt.right, scope))
         pprint(self.REGISTERS)
-        dest_reg = self.set_register(dest)            
+        dest_reg = self.set_register(dest, scope)            
         #ops = {ast.Add: "ADD", ast.Sub: "SUB"}
         if isinstance(stmt.op, ast.Add):
             self.compiled += "ADD "
@@ -127,7 +142,7 @@ class Compiler:
         self.compiled += test # must include a branch
         self.compiled += f"B {end_label}\n" # if the test was false we must skip to the end.
         self._compile_label(body_label)
-        self.compile_ast(stmt.body) 
+        self.compile_ast_with_locals(stmt.body)
         self.compiled += f"B {test_label}\n"
         self._compile_label(end_label) # must be the final statement
 
@@ -168,16 +183,16 @@ class Compiler:
 ##           else_label = self.get_label("else")
 ##           self.compiled += f"B {else_label}\n"
 ##           self.compile_label(else_label)
-            self.compile_ast(stmt.orelse)
+            self.compile_ast_with_locals(stmt.orelse)
             self.compiled += f"B {endif_label}\n"
         self._compile_label(if_label)
-        self.compile_ast(stmt.body)
+        self.compile_ast_with_locals(stmt.body)
         if "elif" in if_label:
             self.compiled += f"B {endif_label}\n"
         else:
             self._compile_label(endif_label) # must be the final statement of the original if one
 
-    def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str) -> str or None:
+    def _compile_test_to_str(self, test: ast.Compare or ast.Constant, label: str, scope) -> str or None:
         """
         Compiles a test as used by If and While. Returns the assembly code to be used by If or While.
         This assembly code always includes a branch to `label`.
@@ -197,7 +212,7 @@ class Compiler:
                 if comp(left.value, right.value):
                     return self._compile_test_to_str(test=ast.Constant(value=True), label=label)
             else:
-                left_r = self.get_register(left)
+                left_r = self.get_register(left, scope)
                 right_r = self.get_register(right)
                 return self._compile_condition_to_str(left_r, right_r, op, label)
 
@@ -237,19 +252,19 @@ class Compiler:
         self.branch_counter[keyword] += 1
         return label
 
-    def get_register(self, var: ast.Name or ast.Constant) -> int:
+    def get_register(self, var: ast.Name or ast.Constant, scope: set) -> int:
         """
         Returns the register that `var` is registered to. 
         If `var` is a constant the constant is assigned a register and that is returned.
         """
         if isinstance(var, ast.Name):
-            r = self.get_register_from_name(var.id)
+            r = self.get_register_from_name(var.id, scope)
         elif isinstance(var, ast.Constant): # perhaps look for constants already stored?
             # originally this raised a ValueError for reasons forgotten - may have been laziness
             r = self.give_constant_register(var.value)[1]
         return r
     
-    def get_register_from_name(self, name: str) -> int:
+    def get_register_from_name(self, name: str, scope) -> int:
         """
         Returns the register that a variable name is registered to.
         If the variable is in memory, but not in the registers, then a `LDR` call is added to `self.compiled`.
@@ -258,7 +273,7 @@ class Compiler:
             return self.REGISTERS[name]
         elif name in self.MEM_LOCATIONS:
             memloc = self.MEM_LOCATIONS[name]
-            r = self.set_register(name)
+            r = self.set_register(name, scope)
             self.compiled += f"LDR R{r}, {memloc}\n"
             return r
         else:
@@ -268,22 +283,23 @@ class Compiler:
     # currently this is added to self.compiled before the whiletest label
     # - which is more optimal but could mean it's overwritten
     #TODO: call constants `constx` where x is their value and look them up before assigning a new register.
-    def give_constant_register(self, value: int) -> str and int:
+    def give_constant_register(self, value: int, scope: set) -> str and int:
         "Assigns a register to a constant and returns the temporary name and the register."
         if not isinstance(value, int):
             raise TypeError("py2aqa32 only supports integer constants.") 
         name = "const" + str(self.temp_reg_counter)
         self.temp_reg_counter += 1
-        r = self.set_register(name)
+        r = self.set_register(name, scope)
         self.compiled += f"MOV R{r}, #{value}\n"
         return name, r
 
-    def set_register(self, name: str) -> int:
+    def set_register(self, name: str, scope: set) -> int:
         "Assigns a register to a variable name and returns that register."
         #if DEBUG:
          #   pprint((name, self.REGISTERS))
         if name in self.REGISTERS.keys():
             return self.get_register_from_name(name)
+        scope |= {name}
         if DEBUG:
             pprint((name, self.REGISTERS))
         reg = self.REGISTERS.find_first_empty_loc()
@@ -292,6 +308,14 @@ class Compiler:
             # Comment to help the reader/tester understand the output.
             self.compiled += f"\n//{name} = R{reg}\n"
         return reg 
+
+    def free_memory(self, dead_vars: set) -> None:
+        "Unassigns the register/memory location from each name in dead_vars."
+        for name in dead_vars:
+            if name in self.REGISTERS.keys():
+                del self.REGISTERS[name]
+            if name in self.MEM_LOCATIONS.keys():
+                del self.MEM_LOCATIONS[name]
 
 if __name__ == "__main__":
     c = Compiler()
