@@ -4,6 +4,7 @@ c = a + b
 d = b - c
 while a > 0:
     a -= 1
+    e = 7 # registers are unassigned once variables are out-of-scope
 
 if a == 0:
     a = 10
@@ -20,4 +21,4 @@ if c == d:
 else:
     d -= 1
 
-#print(a,b,c,d)
+#print(a,b,c,d) #--> 10 11 5 -3

@@ -67,10 +67,11 @@ class Compiler:
     
     def compile_ast_with_locals(self, local_stmt: ast.Module or list) -> None:
         "self.compile_ast with builtin space freeing - method to avoid repetition."
-        old_globals = self.globals[::] # must be a copy as sets are mutable
+        old_globals = set(self.globals) # creates a copy as sets are mutable (https://stackoverflow.com/questions/14193438/are-python-sets-mutable)
         self.compile_ast(local_stmt, scope=self.globals)
-        locals = old_globals & self.globals # locals is any variable added in this block
-        self.free_memory(locals)
+        if self.globals != old_globals: #= if there are new variables in self.globals
+            locals = self.globals - old_globals # locals is any variable added in local_stmt
+            self.free_memory(locals)
 
     def compile_Assign(self, assign: ast.Assign, scope: set) -> None:
         "Compiles statements of the type `spam = ham`."
@@ -84,16 +85,16 @@ class Compiler:
                     self.compiled += "#" + str(assign.value.n)
                 self.compiled += "\n"
 
-    def compile_AugAssign(self, assign: ast.AugAssign) -> None:
+    def compile_AugAssign(self, assign: ast.AugAssign, scope: set) -> None:
         "Compiles statements of the type `spam += ham`."
         temp_assign = ast.Assign(targets = [assign.target],
                                  value = ast.BinOp(
                                      left = assign.target,
                                      op = assign.op,
                                      right = assign.value
-                                     )
-                                 )
-        self.compile_Assign(temp_assign)
+                                     ) 
+                                )
+        self.compile_Assign(temp_assign, scope)
 
     def compile_BinOp(self, stmt: ast.BinOp, dest: str, scope: set) -> None:
         """
@@ -135,7 +136,7 @@ class Compiler:
         'endwhile' is guarenteed to come after the entire while loop and is a return to the main code.      
         """ #TODO: implement memory management and call it at endwhile.
         test_label, body_label, end_label = self.get_label("whiletest"), self.get_label("whilebody"), self.get_label("endwhile")
-        test = self._compile_test_to_str(stmt.test, body_label)
+        test = self._compile_test_to_str(stmt.test, body_label, self.globals)
         if test is None: # could return None with a Const == Const where the statement is patently false
             return None # no need to compile a null-condition
         self._compile_label(test_label)
@@ -167,7 +168,7 @@ class Compiler:
         else:
             if_label = self.get_label("elif") # not strictly needed
             #endif_label = endif_label
-        test = self._compile_test_to_str(stmt.test, if_label)
+        test = self._compile_test_to_str(stmt.test, if_label, self.globals)
         if test is None:
             return None
         self.compiled += test
@@ -210,10 +211,10 @@ class Compiler:
             if isinstance(left, ast.Constant) and isinstance(right, ast.Constant): # optimise out Const == Const
                 comp = self.COMP_OPS[type(op)]
                 if comp(left.value, right.value):
-                    return self._compile_test_to_str(test=ast.Constant(value=True), label=label)
+                    return self._compile_test_to_str(test=ast.Constant(value=True), label=label, scope=scope)
             else:
                 left_r = self.get_register(left, scope)
-                right_r = self.get_register(right)
+                right_r = self.get_register(right, scope)
                 return self._compile_condition_to_str(left_r, right_r, op, label)
 
     def _compile_condition_to_str(self, left_reg: int, right_reg: int, op, true_label: str) -> str: # may need revising for elif/else etc
@@ -261,7 +262,7 @@ class Compiler:
             r = self.get_register_from_name(var.id, scope)
         elif isinstance(var, ast.Constant): # perhaps look for constants already stored?
             # originally this raised a ValueError for reasons forgotten - may have been laziness
-            r = self.give_constant_register(var.value)[1]
+            r = self.give_constant_register(var.value, scope)[1]
         return r
     
     def get_register_from_name(self, name: str, scope) -> int:
@@ -298,7 +299,7 @@ class Compiler:
         #if DEBUG:
          #   pprint((name, self.REGISTERS))
         if name in self.REGISTERS.keys():
-            return self.get_register_from_name(name)
+            return self.get_register_from_name(name, scope)
         scope |= {name}
         if DEBUG:
             pprint((name, self.REGISTERS))
@@ -310,7 +311,10 @@ class Compiler:
         return reg 
 
     def free_memory(self, dead_vars: set) -> None:
-        "Unassigns the register/memory location from each name in dead_vars."
+        """
+        Unassigns the register/memory location from each name in dead_vars.
+        self.temp_reg_counter is never decremented to prevent unnecessary name clashes.
+        """
         for name in dead_vars:
             if name in self.REGISTERS.keys():
                 del self.REGISTERS[name]
